@@ -1,32 +1,47 @@
-##fitting functions for pairwise measured data
+##GI-JOE (edge-wise) functions 
 #----------------------------------------------------#
 library(MTS)
-#library(reticulate)
 library(rTensor)
 #----------------------------------------------------#
 edge_testing <- function(X, n_total, Ind, Entryest_Sigma, p, N, node_a, node_b, ...){
-  ## Given data X (Ind[[i]][[j]] tells the row indices for pair i,j to be observed), pairwise sample sizes N, and 4-tuplewise sample size N4, output the test statistic for Theta[a,b]/Theta[a,a].
-  #tuning_c can be an additional input; otherwise, chosen by stability
+  ## Perform GI-JOE (edge-wise) for pairwise measured data
+  ## Pairwise measured data typically has huge number of rows, and hence general method for computing the quadruple sample sizes and even indexing can be inefficient.
+  ## Therefore, we wrote a separate function for GI-JOE (edge-wise) with pairwise measured data for computational reasons.
+  
+  ## X: n_total by p matrix; Each row of X represents a sample, with two variables being observed, while the rest are all zero
+  ## Ind: list of (p-1) list, Ind[[i]][[j]] tells the row indices of X where pair i,j are observed, for i<j
+  ## Entryest_Sigma: entry-wise unbiased estimate of the covariance matrix
+  ## N: p by p pairwise sample size matrix
+  ## node_a, node_b: tested node pair
+  ## Additional input: tuning parameter constant c; if not provided, chosen by stability selection.
+  ## return: the test statistic for Theta[node_a,node_b]/Theta[node_a,node_a].
   input <- list(...);
   
-  #find PSD projection of Sigma_hat
+  ## find PSD projection of Sigma_hat
   proj_out <- proj_cov(Entryest_Sigma, N, 0.01, 1, matrix(rep(0, p^2), p, p), matrix(rep(1, p^2), p, p), 0.001, 500)
   PSD_Sigma  <- proj_out$projected_S
   
-  #neighborhood lasso for a and debiasing vector for (a,b)
-  lambda_scale <- sqrt(log(p)/apply(N, 1, min))
+  ## neighborhood lasso for a and debiasing vector for (a,b)
+  #optimization parameters for neighborhood regression: 
   eta <- 1;tol <- 0.00001
+  #eta is the initial step size and tol is the tolerance in the projected gradient descent algorithm
+  lambda_scale <- sqrt(log(p)/apply(N, 1, min))
+  #lambda_scale is the scaling vector of the tuning parameter vector
   beta_hat <- rep(0, p)
   theta_hat <- rep(0, p)
+  #initialize neighborhood regression estimator for node_a and node_b
   ind <- (1 : p)[-node_a]
   node_b_ind <- which(ind == node_b)
   if(length(input) > 0){
     tuning_c <- input[[1]]
+    #set tuning constant as the additional input
     if(length(tuning_c > 1)){
       fit_out1 <- fit_nb(PSD_Sigma, node_a, lambda_scale[-node_a] * tuning_c[1], eta, tol)
       tuning_c1 <- tuning_c[1]
+      #neighborhood regression for node_a upon [p]\node_a
       fit_out2 <- fit_nb(PSD_Sigma[-node_a,-node_a], node_b_ind, lambda_scale[-c(node_a,node_b)] * tuning_c[2], eta, tol)
       tuning_c2 <- tuning_c[2]
+      #neighborhood regression for node_b upon [p]\{node_a, node_b}
     }else{
       fit_out1 <- fit_nb(PSD_Sigma, node_a, lambda_scale[-node_a] * tuning_c, eta, tol)
       tuning_c1 <- tuning_c
@@ -34,6 +49,7 @@ edge_testing <- function(X, n_total, Ind, Entryest_Sigma, p, N, node_a, node_b, 
       tuning_c2 <- tuning_c
     }
   }else{
+    #neighborhood regression with stability tuning when no additional input is provided
     n_subsample <- 20; stb_thrs <- 0.05
     fit_out1 <- est_nb_tuning(X, n_total, p, Ind, n_subsample, stb_thrs, PSD_Sigma, node_a, lambda_scale[-node_a], eta, tol)
     tuning_c1 <- fit_out1$tuning_c
@@ -42,182 +58,27 @@ edge_testing <- function(X, n_total, Ind, Entryest_Sigma, p, N, node_a, node_b, 
     tuning_c2 <- fit_out2$tuning_c
   }
   beta_hat[-node_a] <- fit_out1$beta_hat
-  theta_hat[-c(node_a,node_b)] <- fit_out2$beta_hat
-  tau <- as.numeric(1 / (PSD_Sigma[node_b, node_b] - PSD_Sigma[node_b, ] %*% theta_hat))
-  theta_hat <- -theta_hat * tau
-  theta_hat[node_b] <- tau
+  #estimated -Theta[,node_a]/Theta[node_a,node_a], but with beta_hat[node_a] = 0
+  theta_hat[-c(node_a,node_b)] <- - fit_out2$beta_hat
+  theta_hat[node_b] <- 1
+  tau_varest <- as.numeric(1 / (t(theta_hat) %*% PSD_Sigma %*% theta_hat))
+  tau_debiasing <- as.numeric(1 / (PSD_Sigma[node_b, ] %*% theta_hat))
+  theta_hat_debiasing <- theta_hat * tau_debiasing
+  theta_hat_varest <- theta_hat * tau_varest
+  #estimated Theta^{(a)}_{,node_b} defined in the paper
+  
   #debiased neighborhood lasso (node_a, node_b)
-  beta_tilde = as.numeric(beta_hat[node_b] - t(theta_hat) %*% (Entryest_Sigma %*% beta_hat - Entryest_Sigma[, node_a]))
+  beta_tilde = as.numeric(beta_hat[node_b] - t(theta_hat_debiasing) %*% (Entryest_Sigma %*% beta_hat - Entryest_Sigma[, node_a]))
   #variance estimation
   beta_hat2 <- -beta_hat;
   beta_hat2[node_a] <- 1;
-  var_est <- find_var(Entryest_Sigma, N, beta_hat2, theta_hat)
+  #estimated Theta[,node_a]/Theta[node_a,node_a]
+  var_est <- find_var(PSD_Sigma, N, beta_hat2, theta_hat_varest)
   
   #test statistic
   test <- beta_tilde/sqrt(var_est)
-  return(list(beta_hat = beta_hat, theta_hat = theta_hat, beta_tilde = beta_tilde, tuning_c1 = tuning_c1, tuning_c2 = tuning_c2, var_est = var_est, test = test))
+  return(list(beta_hat = beta_hat, theta_hat_debiasing = theta_hat_debiasing, theta_hat_varest = theta_hat_varest, beta_tilde = beta_tilde, tuning_c1 = tuning_c1, tuning_c2 = tuning_c2, var_est = var_est, test = test, PSD_Sigma = PSD_Sigma))
 }
-
-edge_testing_saveSigma <- function(X, n_total, Ind, Entryest_Sigma, p, N, node_a, node_b, ...){
-  ## Given data X (Ind[[i]][[j]] tells the row indices for pair i,j to be observed), pairwise sample sizes N, and 4-tuplewise sample size N4, output the test statistic for Theta[a,b]/Theta[a,a].
-  #tuning_c can be an additional input; otherwise, chosen by stability
-  input <- list(...);
-  
-  #find PSD projection of Sigma_hat
-  proj_out <- proj_cov(Entryest_Sigma, N, 0.01, 1, matrix(rep(0, p^2), p, p), matrix(rep(1, p^2), p, p), 0.001, 500)
-  PSD_Sigma  <- proj_out$projected_S
-  
-  #neighborhood lasso for a and debiasing vector for (a,b)
-  lambda_scale <- sqrt(log(p)/apply(N, 1, min))
-  eta <- 1;tol <- 0.00001
-  beta_hat <- rep(0, p)
-  theta_hat <- rep(0, p)
-  ind <- (1 : p)[-node_a]
-  node_b_ind <- which(ind == node_b)
-  if(length(input) > 0){
-    tuning_c <- input[[1]]
-    if(length(tuning_c > 1)){
-      fit_out1 <- fit_nb(PSD_Sigma, node_a, lambda_scale[-node_a] * tuning_c[1], eta, tol)
-      tuning_c1 <- tuning_c[1]
-      fit_out2 <- fit_nb(PSD_Sigma[-node_a,-node_a], node_b_ind, lambda_scale[-c(node_a,node_b)] * tuning_c[2], eta, tol)
-      tuning_c2 <- tuning_c[2]
-    }else{
-      fit_out1 <- fit_nb(PSD_Sigma, node_a, lambda_scale[-node_a] * tuning_c, eta, tol)
-      tuning_c1 <- tuning_c
-      fit_out2 <- fit_nb(PSD_Sigma[-node_a,-node_a], node_b_ind, lambda_scale[-c(node_a,node_b)] * tuning_c, eta, tol)
-      tuning_c2 <- tuning_c
-    }
-  }else{
-    n_subsample <- 20; stb_thrs <- 0.05
-    fit_out1 <- est_nb_tuning(X, n_total, p, Ind, n_subsample, stb_thrs, PSD_Sigma, node_a, lambda_scale[-node_a], eta, tol)
-    tuning_c1 <- fit_out1$tuning_c
-    Ind_del <- find_ind_delete_node(Ind, p, node_a); 
-    fit_out2 <- est_nb_tuning(X[, -node_a], n_total, p - 1, Ind_del, n_subsample, stb_thrs, PSD_Sigma[-node_a, -node_a], node_b_ind, lambda_scale[-c(node_a, node_b)], eta, tol)
-    tuning_c2 <- fit_out2$tuning_c
-  }
-  beta_hat[-node_a] <- fit_out1$beta_hat
-  theta_hat[-c(node_a,node_b)] <- fit_out2$beta_hat
-  tau <- as.numeric(1 / (PSD_Sigma[node_b, node_b] - PSD_Sigma[node_b, ] %*% theta_hat))
-  theta_hat <- -theta_hat * tau
-  theta_hat[node_b] <- tau
-  #debiased neighborhood lasso (node_a, node_b)
-  beta_tilde = as.numeric(beta_hat[node_b] - t(theta_hat) %*% (Entryest_Sigma %*% beta_hat - Entryest_Sigma[, node_a]))
-  #variance estimation
-  beta_hat2 <- -beta_hat;
-  beta_hat2[node_a] <- 1;
-  var_est <- find_var(Entryest_Sigma, N, beta_hat2, theta_hat)
-  
-  #test statistic
-  test <- beta_tilde/sqrt(var_est)
-  return(list(beta_hat = beta_hat, theta_hat = theta_hat, beta_tilde = beta_tilde, 
-              tuning_c1 = tuning_c1, tuning_c2 = tuning_c2, var_est = var_est, 
-              test = test, PSD_Sigma = PSD_Sigma))
-}
-
-
-edge_testing_tildevar <- function(X, n_total, Ind, Entryest_Sigma, p, N, node_a, node_b, tuning_c){
-  ## Given data X (Ind[[i]][[j]] tells the row indices for pair i,j to be observed), pairwise sample sizes N, and 4-tuplewise sample size N4, output the test statistic for Theta[a,b]/Theta[a,a].
-  #tuning_c must be an additional input; 
-  #variance is estimated using beta_tilde instead of beta_hat
-  #find PSD projection of Sigma_hat
-  proj_out <- proj_cov(Entryest_Sigma, N, 0.01, 1, matrix(rep(0, p^2), p, p), matrix(rep(1, p^2), p, p), 0.001, 500)
-  PSD_Sigma  <- proj_out$projected_S
-  
-  #neighborhood lasso for a and debiasing vector for (a,b)
-  lambda_scale <- sqrt(log(p)/apply(N, 1, min))
-  eta <- 1;tol <- 0.00001
-  beta_hat <- rep(0, p)
-  theta_hat <- matrix(rep(0, p^2), p, p)
-  ind <- (1 : p)[-node_a]
-  node_b_ind <- which(ind == node_b)
-  if(length(tuning_c) > 1){
-      fit_out1 <- fit_nb(PSD_Sigma, node_a, lambda_scale[-node_a] * tuning_c[1], eta, tol)
-      tuning_c1 <- tuning_c[1]
-      fit_out2 <- fit_nb(PSD_Sigma[-node_a,-node_a], node_b_ind, lambda_scale[-c(node_a,node_b)] * tuning_c[2], eta, tol)
-      tuning_c2 <- tuning_c[2]
-  }else{
-      fit_out1 <- fit_nb(PSD_Sigma, node_a, lambda_scale[-node_a] * tuning_c, eta, tol)
-      tuning_c1 <- tuning_c
-      fit_out2 <- fit_nb(PSD_Sigma[-node_a,-node_a], node_b_ind, lambda_scale[-c(node_a,node_b)] * tuning_c, eta, tol)
-      tuning_c2 <- tuning_c
-  }
-  beta_hat[-node_a] <- fit_out1$beta_hat
-  theta_hat[node_b, -c(node_a,node_b)] <- fit_out2$beta_hat
-  tau <- as.numeric(1 / (PSD_Sigma[node_b, node_b] - PSD_Sigma[node_b, ] %*% theta_hat[node_b,]))
-  theta_hat[node_b, -c(node_a,node_b)] <- -fit_out2$beta_hat * tau
-  theta_hat[node_b, node_b] <- tau
-  ##debiasing all other nodes as well
-  for(node_j in (1:p)[-c(node_a, node_b)]){
-    node_j_ind <- which(ind == node_j)
-    fit_out_tmp <- fit_nb(PSD_Sigma[-node_a,-node_a], node_j_ind, lambda_scale[-c(node_a,node_j)] * tuning_c2, eta, tol)
-    theta_hat[node_j, -c(node_a,node_j)] <- fit_out_tmp$beta_hat
-    tau_tmp <- as.numeric(1 / (PSD_Sigma[node_j, node_j] - PSD_Sigma[node_j, ] %*% theta_hat[node_j,]))
-    theta_hat[node_j, -c(node_a,node_j)] <- -fit_out_tmp$beta_hat * tau_tmp
-    theta_hat[node_j, node_j] <- tau_tmp
-  }
-  #debiased neighborhood lasso (node_a, the rest of p-1 nodes)
-  beta_tilde <- as.numeric(beta_hat - theta_hat %*% (Entryest_Sigma %*% beta_hat - Entryest_Sigma[, node_a]))
-  beta_tilde2 <- -beta_tilde;
-  beta_tilde2[beta_hat==0] <- 0;
-  beta_tilde2[node_a] <- 1;
-  var_est_tilde <- find_var(Entryest_Sigma, N, beta_tilde2, t(theta_hat[node_b,]))
-  #variance estimation
-  beta_hat2 <- -beta_hat;
-  beta_hat2[node_a] <- 1;
-  var_est <- find_var(Entryest_Sigma, N, beta_hat2, t(theta_hat[node_b,]))
-  
-  #test statistic
-  test <- beta_tilde[node_b]/sqrt(var_est)
-  test_tilde <- beta_tilde[node_b]/sqrt(var_est_tilde)
-  return(list(beta_hat = beta_hat, theta_hat = theta_hat, beta_tilde = beta_tilde, tuning_c1 = tuning_c1, tuning_c2 = tuning_c2, var_est = var_est, var_est_tilde = var_est_tilde,
-              test = test, test_tilde = test_tilde))
-}
-
-edge_testing_notuning <- function(Entryest_Sigma, n_total, p, N, node_a, node_b, tuning_c){
-  ## Given data X (Ind[[i]][[j]] tells the row indices for pair i,j to be observed), pairwise sample sizes N, and 4-tuplewise sample size N4, output the test statistic for Theta[a,b]/Theta[a,a].
-  #tuning_c can be an additional input; otherwise, chosen by cross validation
-  
-  #find PSD projection of Sigma_hat
-  proj_out <- proj_cov(Entryest_Sigma, N, 0.01, 1, matrix(rep(0, p^2), p, p), matrix(rep(1, p^2), p, p), 0.001, 500)
-  PSD_Sigma  <- proj_out$projected_S
-  
-  #neighborhood lasso for a and debiasing vector for (a,b)
-  lambda_scale <- sqrt(log(p)/apply(N, 1, min))
-  eta <- 1;tol <- 0.00001
-  beta_hat <- rep(0, p)
-  theta_hat <- rep(0, p)
-  ind <- (1 : p)[-node_a]
-  node_b_ind <- which(ind == node_b)
-
-  if(length(tuning_c > 1)){
-    fit_out1 <- fit_nb(PSD_Sigma, node_a, lambda_scale[-node_a] * tuning_c[1], eta, tol)
-    tuning_c1 <- tuning_c[1]
-    fit_out2 <- fit_nb(PSD_Sigma[-node_a,-node_a], node_b_ind, lambda_scale[-c(node_a,node_b)] * tuning_c[2], eta, tol)
-    tuning_c2 <- tuning_c[2]
-  }else{
-    fit_out1 <- fit_nb(PSD_Sigma, node_a, lambda_scale[-node_a] * tuning_c, eta, tol)
-    tuning_c1 <- tuning_c
-    fit_out2 <- fit_nb(PSD_Sigma[-node_a,-node_a], node_b_ind, lambda_scale[-c(node_a,node_b)] * tuning_c, eta, tol)
-    tuning_c2 <- tuning_c
-  }
-
-  beta_hat[-node_a] <- fit_out1$beta_hat
-  theta_hat[-c(node_a,node_b)] <- fit_out2$beta_hat
-  tau <- as.numeric(1 / (PSD_Sigma[node_b, node_b] - PSD_Sigma[node_b, ] %*% theta_hat))
-  theta_hat <- -theta_hat * tau
-  theta_hat[node_b] <- tau
-  #debiased neighborhood lasso (node_a, node_b)
-  beta_tilde = as.numeric(beta_hat[node_b] - t(theta_hat) %*% (Entryest_Sigma %*% beta_hat - Entryest_Sigma[, node_a]))
-  #variance estimation
-  beta_hat2 <- -beta_hat;
-  beta_hat2[node_a] <- 1;
-  var_est <- find_var(Entryest_Sigma, N, beta_hat2, theta_hat)
-  
-  #test statistic
-  test <- beta_tilde/sqrt(var_est)
-  return(list(beta_hat = beta_hat, theta_hat = theta_hat, beta_tilde = beta_tilde, tuning_c1 = tuning_c1, tuning_c2 = tuning_c2, var_est = var_est, test = test))
-}
-
 
 est_nb_tuning <- function(X, n_total, p, Ind, n_subsample, stb_thrs, Sigma, a, lambda_scale, eta, tol){
   ## estimate neighborhood with tuning parameter selected based on stability
@@ -347,46 +208,6 @@ find_var <- function(Sigma, N, beta, theta){
   return(var)
 }
 
-#find_var <- function(Sigma, N, N4, beta, theta){
-#  cT <- outer(Sigma, Sigma)
-#  cT <- aperm(cT, c(1,3,2,4)) + aperm(cT, c(1,3,4,2))
-#  cTn <- cT * N4 / outer(N, N) 
-#  var <- seq_ttm(as.tensor(cTn), list(theta, beta, theta, beta))@data[1]
-#  return(var)
-#}
-
-m4_sum <- function(X){
-  ## For a n*p matrix X, compute  a order-4 tensor with dimensions all equal to p. Each entry of the tensor is the summation of the 4d tuple data over n samples
-  dim <- dim(X)
-  n <- dim[1]
-  p <- dim[2]
-  m4_sum <- array(rep(0,p^4),c(p,p,p,p))
-  if(n>p^4){
-    for(j1 in 1:p){
-      for(k1 in 1:p){
-        for(j2 in 1:p){
-          for(k2 in 1:p){
-            m4_sum[j1,k1,j2,k2] <- sum(X[,j1]*X[,k1]*X[,j2]*X[k2])
-          }
-        }
-      }
-    }
-  }
-  else{
-    for(i in 1:n){
-      m4_sum <- m4_sum + outer(outer(outer(X[i,],X[i,]),X[i,]),X[i,])
-    }
-  }
-  return(m4_sum)
-}
-
-seq_ttm <- function(tensor, vec_list){
-  for(i in 1:length(vec_list)){
-    tensor <- ttm(tensor, t(vec_list[[i]]), i) 
-  }
-  return(tensor)
-}
-
 proj_cov <- function(S, N, epsilon, mu, init_B, init_Lambda, tol, maxiter){
   ## projection of sample covariance matrix upon positive semi-definite cone w.r.t. weighted l_infty norm
   # S: sample covariance matrix (entry-wise estimation)
@@ -450,27 +271,6 @@ proj_wt_l1_vec <- function(v,omega,r){
   }
 }
 #----------------------------------------------------#
-proj_wt_l1 <- function(A,omega,r){
-  ## projection on weighted l1 ball
-  # omega: weight matrix
-  # r: radius
-  z <- as.vector(A/omega);
-  sort_ind <- order(z,decreasing = TRUE)
-  a <- cumsum((as.vector(abs(omega*A)))[sort_ind])
-  b <- cumsum((omega^2)[sort_ind])
-  j <- length(z);
-  for(i in 1:length(z)){
-    j_new <- sum(z[sort_ind]>(a[j]-r)/b[j])
-    if(j_new == j){
-      break;
-    }else{
-      j <- j_new;
-    }
-  }
-  c <- (a[j]-r)/b[j];
-  proj_A <- pmax(abs(A) - c*omega, 0 )*sign(A)
-  return(proj_A)
-}
 
 fit_nb <- function(Sigma,a,lambda,eta,tol,...){
   ## use projected gradient descent to solve neighborhood lasso
@@ -547,6 +347,7 @@ fit_nb <- function(Sigma,a,lambda,eta,tol,...){
   return(list(beta_hat = beta,loss_path = loss,final_grad = grad,cvg = cvg))
 }
 fit_nb_zerosamplesz <- function(Sigma,a,lambda,eta,tol,...){
+  #if some node has zero sample size with another node, and lambda has an infinit entry, do not conisder this node in the neighborhood regression.
   p <- dim(Sigma)[1]
   input <- list(...);
   if(length(input)>1){
@@ -569,60 +370,6 @@ fit_nb_zerosamplesz <- function(Sigma,a,lambda,eta,tol,...){
 
 
 
-calc_Sigma <- function(X, p, Ind, N, ...){
-  #calculate covariate estimate (entrywise) using data X; Ind tells the sample indices for each pair (i,j) with i<j; N is the pairwise sample size matrix
-  #if additional input is nonempty and is a scalar k, use Ind[[i]][[j]][[k]] as the sample indices for each pair (i,j)
-  input <- list(...)
-  Sigma <- matrix(rep(0, p^2), p, p)
-  dSigma <- rep(0, p)
-  if(length(input) == 0){
-    for(i in 1 : (p - 1)){
-      for(j in (i + 1) : p){
-        ind_tmp <- Ind[[i]][[j]]
-        Sigma[i, j] <- sum(X[ind_tmp, i] * X[ind_tmp, j]) / N[i, j]
-        dSigma[i] <- dSigma[i] + sum(X[ind_tmp, i]^2)
-        dSigma[j] <- dSigma[j] + sum(X[ind_tmp, j]^2)
-      }
-    }
-  }else{
-    for(i in 1 : (p - 1)){
-      for(j in (i + 1) : p){
-        ind_tmp <- Ind[[i]][[j]][[input[[1]]]]
-        Sigma[i, j] <- sum(X[ind_tmp, i] * X[ind_tmp, j]) / N[i, j]
-        dSigma[i] <- dSigma[i] + sum(X[ind_tmp, i]^2)
-        dSigma[j] <- dSigma[j] + sum(X[ind_tmp, j]^2)
-      }
-    }
-  }
-  Sigma <- Sigma + t(Sigma)
-  diag(Sigma) <- dSigma / diag(N)
-  return(Sigma)
-}
-
-
-
-calc_Sigma_N_subset <- function(X, subset, p, Ind){
-  #Not useful now! Too slow when subset is large... given the original data and list of indices for each pair of nodes, compute the covariance matrix and sample size matrix based on the samples within the subset rows
-  Sigma <- matrix(rep(0, p^2), p, p)
-  N <- matrix(rep(0, p^2), p, p)
-  dSigma <- rep(0, p)
-  for(i in 1 : (p - 1)){
-    for(j in (i + 1) : p){
-      start_t <- Sys.time()
-      ind_tmp <- intersect(Ind[[i]][[j]], subset)
-      #N[i, j] <- length(ind_tmp)
-      Sigma[i, j] <- sum(X[ind_tmp, i] * X[ind_tmp, j]) / N[i, j]
-      dSigma[i] <- dSigma[i] + sum(X[ind_tmp, i]^2)
-      dSigma[j] <- dSigma[j] + sum(X[ind_tmp, j]^2)
-      Sys.time() - start_t
-      }
-  }
-  N <- N + t(N)
-  diag(N) <- apply(N, 1, sum)
-  Sigma <- Sigma + t(Sigma)
-  diag(Sigma) <- dSigma / diag(N)
-  return(list(Sigma_est = Sigma, N = N))
-}
 
 find_ind_delete_node <- function(Ind, p, node_a){
   #find the new list of indices when node_a is deleted from nodes 1:p
@@ -638,100 +385,3 @@ find_ind_delete_node <- function(Ind, p, node_a){
   return(Ind_del)
 }
 
-
-# The following two cross validation functions are not suitable for our setting, since the loss does not take into account the differing sample size issue
-# if recoding cross validation, need to look at the log-likelihood loss, which can be computationally heavy.
-
-cv_nb <- function(X, Ind, Ind_cv_train, Ind_cv_test, N_cv_train, N_cv_test, a, tuning_c_vec, eta, tol){
-  ##perform 5-fold cross validation for data X, observation pattern Ind, constant tuning parameters tuning_c_vec
-  n <- dim(X)[1]; p <- dim(X)[2];
-  #training_sz <- floor(n / 5 * 4); test_sz <- n - training_sz
-  #perm <- sample(1 : n)
-  loss <- rep(0, length(tuning_c_vec));
-  for(i in 1 : 5){
-    #test_set <- perm[((i - 1) * test_sz + 1) : (i * test_sz)]
-    #training_set <- (1 : n)[-test_set]
-    #train_data <- calc_Sigma_N_subset(X, training_set, p, Ind)
-    Sigma_train <- calc_Sigma(X, p, Ind_cv_train, N_cv_train, i); 
-    Sigma_test <- calc_Sigma(X, p, Ind_cv_test, N_cv_test, i); 
-    lambda_scale_tmp <- sqrt(log(p)/apply(N_cv_train,1,min))
-    #find PSD projection of Sigma_hat
-    PSD_Sigma_train  <- proj_cov(Sigma_train, N_cv_train, 0.01, 1, matrix(rep(0, p^2), p, p), matrix(rep(1, p^2), p, p), 0.001, 500)$projected_S
-    for(j in 1 : length(tuning_c_vec)){
-      out <- fit_nb(PSD_Sigma_train, a, lambda_scale_tmp[-a] * tuning_c_vec[j], eta, tol)
-      beta_tmp <- out$beta_hat
-      loss[j] <- loss[j] + t(beta_tmp)%*%Sigma_test[-a, -a]%*%beta_tmp/2 - sum(Sigma_test[-a, a] * beta_tmp);
-    }
-  }
-  return(loss)
-}
-
-est_nb_cv <- function(X, Ind, Ind_cv_train, Ind_cv_test, N_cv_train, N_cv_test, Sigma, a, lambda_scale, eta, tol){
-  ## estimate neighborhood with tuning parameter selected by cross-validation
-  #find range of tuning_c
-  tuning_c_max <- 1
-  out <- fit_nb(Sigma, a, lambda_scale * tuning_c_max, eta, tol)
-  while(sum(out$beta_hat != 0) > 0){
-    tuning_c_max <- tuning_c_max * 2
-    out <- fit_nb(Sigma, a, lambda_scale * tuning_c_max, eta, tol)
-  }
-  if(tuning_c_max == 1){
-    while(sum(out$beta_hat != 0) == 0){
-      tuning_c_max <- tuning_c_max / 2
-      out <- fit_nb(Sigma, a, lambda_scale * tuning_c_max, eta, tol)
-    }
-    tuning_c_max <- tuning_c_max * 2
-  }
-  tuning_c_vec <- exp(log(tuning_c_max)-log(10) / 19 * (0 : 19))
-  loss <- cv_nb(X, Ind, Ind_cv_train, Ind_cv_test, N_cv_train, N_cv_test, a, tuning_c_vec, eta, tol)
-  ind <- which.min(loss)
-  out_final <- fit_nb(Sigma, a, lambda_scale * tuning_c_vec[ind], eta, tol)
-  out_final$tuning_c <- tuning_c_vec[ind]
-  return(out_final)
-}
-edge_testing_cv <- function(X, Ind, Ind_cv_train, Ind_cv_test, Entryest_Sigma, p, N, N4, N_cv_train, N_cv_test, node_a, node_b, ...){
-  ## Given data X (Ind[[i]][[j]] tells the row indices for pair i,j to be observed), pairwise sample sizes N, and 4-tuplewise sample size N4, output the test statistic for Theta[a,b]/Theta[a,a].
-  #tuning_c can be an additional input; otherwise, chosen by cross validation
-  input <- list(...);
-  
-  #find PSD projection of Sigma_hat
-  proj_out <- proj_cov(Entryest_Sigma, N, 0.01, 1, matrix(rep(0, p^2), p, p), matrix(rep(1, p^2), p, p), 0.001, 500)
-  PSD_Sigma  <- proj_out$projected_S
-  
-  #neighborhood lasso for a and debiasing vector for (a,b)
-  lambda_scale <- sqrt(log(p)/apply(N, 1, min))
-  eta <- 1;tol <- 0.00001
-  beta_hat <- rep(0, p)
-  theta_hat <- rep(0, p)
-  ind <- (1 : p)[-node_a]
-  node_b_ind <- which(ind == node_b)
-  if(length(input) > 0){
-    tuning_c <- input[[1]]
-    fit_out1 <- fit_nb(PSD_Sigma, node_a, lambda_scale[-node_a] * tuning_c, eta, tol)
-    tuning_c1 <- tuning_c
-    fit_out2 <- fit_nb(PSD_Sigma[-node_a,-node_a], node_b_ind, lambda_scale[-c(node_a,node_b)] * tuning_c, eta, tol)
-    tuning_c2 <- tuning_c
-  }else{
-    fit_out1 <- est_nb_cv(X, Ind, Ind_cv_train, Ind_cv_test, N_cv_train, N_cv_test, PSD_Sigma, node_a, lambda_scale[-node_a], eta, tol)
-    tuning_c1 <- fit_out1$tuning_c
-    Ind_del <- find_ind_delete_node(Ind, p, node_a); Ind_cv_train_del <- find_ind_delete_node(Ind_cv_train, p, node_a); Ind_cv_test_del <- find_ind_delete_node(Ind_cv_test, p, node_a);
-    fit_out2 <- est_nb_cv(X[, -node_a], Ind_del, Ind_cv_train_del, Ind_cv_test_del, N_cv_train[-node_a, -node_a], N_cv_test[-node_a, -node_a], PSD_Sigma[-node_a, -node_a], node_b_ind, lambda_scale[-c(node_a, node_b)], eta, tol)
-    tuning_c2 <- fit_out2$tuning_c
-  }
-  beta_hat[-node_a] <- fit_out1$beta_hat
-  theta_hat[-c(node_a,node_b)] <- fit_out2$beta_hat
-  tau <- as.numeric(1 / (PSD_Sigma[node_b, node_b] - PSD_Sigma[node_b, ] %*% theta_hat))
-  theta_hat <- -theta_hat * tau
-  theta_hat[node_b] <- tau
-  #debiased neighborhood lasso (node_a, node_b)
-  beta_tilde = as.numeric(beta_hat[node_b] - t(theta_hat) %*% (Entryest_Sigma %*% beta_hat - Entryest_Sigma[, node_a]))
-  #variance estimation
-  beta_hat2 <- -beta_hat;
-  beta_hat2[node_a] <- 1;
-  var_est <- find_var(Entryest_Sigma, N, N4, beta_hat2, theta_hat)
-  
-  #test statistic
-  test <- beta_tilde/sqrt(var_est)
-  p_val <- 2*(1-pnorm(abs(test)))
-  return(list(beta_hat = beta_hat, theta_hat = theta_hat, beta_tilde = beta_tilde, tuning_c1 = tuning_c1, tuning_c2 = tuning_c2, var_est = var_est, test = test, p_val = p_val))
-}

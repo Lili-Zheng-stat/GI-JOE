@@ -21,16 +21,16 @@ find_graph_stb_tuning <- function(X, Obs, n_total, p, kept_nodes, method, zerofi
     ntuning <- 20
   }
   for(i in 2 : (nsubsample+1)){
-      start_t_tmp <- Sys.time()
-      set.seed(i - 1)
-      selected_ind <- as.logical(rbinom(n_total, 1, 0.8))
-      Sigma_out <- calc_Sigma_PSD(X_kept[selected_ind, ], Obs_kept[selected_ind, ], p_kept)
-      Sigma_hat[i, , ] <- Sigma_out$PSD_Sigma; N[i, , ] <- Sigma_out$N
-      graph_est[[i - 1]] <- fit_baseline_graph(Sigma_hat[i, , ], method = method, 
-                                    lambda = lambda_list * sqrt(n_total) / sqrt(sum(selected_ind)), 
-                                    p_kept, sum(selected_ind), N[i, , ], zerofill)$graph_est_list
-      print(Sys.time() - start_t_tmp)
-      print(sprintf("Fitted graphs for %dth subsampling!", i))
+    start_t_tmp <- Sys.time()
+    set.seed(i - 1)
+    selected_ind <- as.logical(rbinom(n_total, 1, 0.8))
+    Sigma_out <- calc_Sigma_PSD(X_kept[selected_ind, ], Obs_kept[selected_ind, ], p_kept)
+    Sigma_hat[i, , ] <- Sigma_out$PSD_Sigma; N[i, , ] <- Sigma_out$N
+    graph_est[[i - 1]] <- fit_baseline_graph(Sigma_hat[i, , ], method = method, 
+                                             lambda = lambda_list * sqrt(n_total) / sqrt(sum(selected_ind)), 
+                                             p_kept, sum(selected_ind), N[i, , ], zerofill)$graph_est_list
+    print(Sys.time() - start_t_tmp)
+    print(sprintf("Fitted graphs for %dth subsampling!", i))
   }
   select_n <- array(rep(0, ntuning * p_kept^2), c(ntuning, p_kept, p_kept))
   for(j in 1:ntuning){
@@ -53,9 +53,9 @@ find_graph_stb_tuning <- function(X, Obs, n_total, p, kept_nodes, method, zerofi
                             lambda = lambda_list[choice_ind], 
                             p_kept, n_total, N[1, , ], zerofill)
   graph_est_final[kept_nodes, kept_nodes] <- as.numeric(out$graph_est_list[[1]])
-
+  
   #result is nonzero for diagonal elements in clime!!!
-  if(method == "glasso"){
+  if(method == "Glasso"){
     #Theta_hat[kept_nodes, kept_nodes] <- as.numeric(out$Theta_est[[1]])
     Theta_hat <- as.numeric(out$Theta_est[[1]])
     return(list(graph_est = graph_est_final, Sigma_hat = Sigma_hat[1, , ], Theta_hat = Theta_hat, lambda = lambda_list[choice_ind]))
@@ -72,11 +72,11 @@ find_lambda_list <- function(Sigma_hat, method, p, n_total, N, zerofill){
     out <- fit_baseline_graph(Sigma_hat, method, lambda = lambda_max, p, n_total, N, zerofill)$graph_est_list[[1]]
   }
   if(lambda_max == sqrt(log(p)/n_total)){
-      while(sum(out) == 0){
-        lambda_max <- lambda_max / 2
-        out <- fit_baseline_graph(Sigma_hat, method, lambda = lambda_max, p, n_total, N, zerofill)$graph_est_list[[1]]
-      }
-      lambda_max <- lambda_max * 2
+    while(sum(out) == 0){
+      lambda_max <- lambda_max / 2
+      out <- fit_baseline_graph(Sigma_hat, method, lambda = lambda_max, p, n_total, N, zerofill)$graph_est_list[[1]]
+    }
+    lambda_max <- lambda_max * 2
   }
   if(method == "CLIME"){
     lambda_list <- exp(log(lambda_max)-log(10) / 9 * (0 : 9))
@@ -90,25 +90,23 @@ fit_baseline_graph <- function(Sigma_hat, method, lambda_list, p, n, N, zerofill
   if(zerofill){
     Sigma_hat[N <= thrs_c * log(p)] <- 0
   }
-  if(method == "nblasso_and"){
+  if(method == "Nlasso(AND)"){
     out <- huge(Sigma_hat, method = "mb", sym = "and", lambda = lambda_list, verbose = FALSE)
     return(list(graph_est_list = out$path))
-  }else if(method == "nblasso_or"){
+  }else if(method == "Nlasso(OR)"){
     out <- huge(Sigma_hat, method = "mb", sym = "or", lambda = lambda_list, verbose = FALSE)
     return(list(graph_est_list = out$path))
-    }else if(method == "glasso"){
-      out <- huge(Sigma_hat, method = "glasso", lambda = lambda_list, verbose = FALSE)
-      return(list(graph_est_list = out$path, Theta_est_list = out$icov))
-      }else if(method == "CLIME"){
-        linsolver <- ifelse(n > p, "simplex", "primaldual"); 
-        out <- clime(Sigma_hat, sigma = TRUE, lambda = lambda_list, linsolver = linsolver)$Omega
-        return(list(graph_est_list  = lapply(out, function(x){diag(x)=0; x!=0}), Theta_est = out))
-    }
+  }else if(method == "Glasso"){
+    out <- huge(Sigma_hat, method = "glasso", lambda = lambda_list, verbose = FALSE)
+    return(list(graph_est_list = out$path, Theta_est_list = out$icov))
+  }else if(method == "CLIME"){
+    linsolver <- ifelse(n > p, "simplex", "primaldual"); 
+    out <- clime(Sigma_hat, sigma = TRUE, lambda = lambda_list, linsolver = linsolver)$Omega
+    return(list(graph_est_list  = lapply(out, function(x){diag(x)=0; x!=0}), Theta_est = out))
+  }
 }
 
 #inference baseline: debiased graphical lasso (Jankova and Van de Geer, 2015); Ren et al 2015; + Bonferroni / Holm's
-#inference baseline: GGM FDR control
-
 test_glasso <- function(Sigma_hat, Theta_hat, n, p, kept_nodes, signif_pval, testing_thrs = 0){
   Theta_tilde <- 2 * Theta_hat - Theta_hat %*% Sigma_hat %*% Theta_hat
   var_est <- diag(Theta_hat) %*% t(diag(Theta_hat)) + Theta_hat^2
@@ -122,7 +120,7 @@ test_glasso <- function(Sigma_hat, Theta_hat, n, p, kept_nodes, signif_pval, tes
     diag(test) <- 0
     p_val <- 2 * (1 - pnorm(abs(test)))
   }
-
+  
   
   #Bonferroni correction
   p_val_Bonferroni <- pmin(p_val*p*(p-1)/2, 1)
