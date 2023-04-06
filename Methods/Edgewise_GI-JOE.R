@@ -1,8 +1,5 @@
 ##GI-JOE (edge-wise) functions 
 #----------------------------------------------------#
-library(MTS)
-library(rTensor)
-#----------------------------------------------------#
 edge_testing <- function(X, n_total, Ind, Entryest_Sigma, p, N, node_a, node_b, ...){
   ## Perform GI-JOE (edge-wise) for pairwise measured data
   ## Pairwise measured data typically has huge number of rows, and hence general method for computing the quadruple sample sizes and even indexing can be inefficient.

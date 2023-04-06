@@ -53,38 +53,51 @@ ii <- 1;
 for(ms_sc in c(1,2)){
   for(graph_type in c("scale-free", "small-world")){
     if(ii == 1){
-      table_results <- summarized_results_est[summarized_results_est$ms_sc == ms_sc & summarized_results_est$graph_type == graph_type, 
+      table_tmp <- summarized_results_est[summarized_results_est$ms_sc == ms_sc & summarized_results_est$graph_type == graph_type, 
                                               c("est_method", "F1_mean", "F1_sd")] 
-      table_results <- table_results[order(table_results$est_method),]
+      table_tmp[,4] <- paste(round(table_tmp[,2], 3), " (", round(table_tmp[,3], 3), ")", sep = "")
+      colnames(table_tmp)[4] <- graph_type
+      table_results <- table_tmp[order(table_tmp$est_method),c(1,4)]
     }else{
-      results_tmp <- summarized_results_est[summarized_results_est$ms_sc == ms_sc & summarized_results_est$graph_type == graph_type, 
+      table_tmp <- summarized_results_est[summarized_results_est$ms_sc == ms_sc & summarized_results_est$graph_type == graph_type, 
                                             c("est_method", "F1_mean", "F1_sd")] 
-      results_tmp <- results_tmp[order(results_tmp$est_method),]
-      table_results <- cbind(table_results, results_tmp[,2:3])
+      table_tmp[,4] <- paste(round(table_tmp[,2], 3), " (", round(table_tmp[,3], 3), ")", sep = "")
+      results_tmp <- table_tmp[order(table_tmp$est_method),c(1,4)]
+      table_results <- cbind(table_results, results_tmp[,2])
+      colnames(table_results)[ncol(table_results)] <- graph_type
     }
     ii <- ii + 1;
   }
 }
-table_results
-
+row.names(table_results) <- NULL
+kbl(table_results) %>%
+  kable_paper("striped", full_width = F) %>%
+  add_header_above(c(" " = 1, "chu measurement" = 2, "darmanis measurement" = 2))
 
 ii <- 1;
 for(ms_sc in c(1,2)){
   for(graph_type in c("scale-free", "small-world")){
     if(ii == 1){
-      table_results <- summarized_results_test[summarized_results_test$ms_sc == ms_sc & summarized_results_test$graph_type == graph_type, 
+      table_tmp <- summarized_results_test[summarized_results_test$ms_sc == ms_sc & summarized_results_test$graph_type == graph_type, 
                                                c("est_method", "F1_mean", "F1_sd")] 
-      table_results <- table_results[order(table_results$est_method),]
+      table_tmp[,4] <- paste(round(table_tmp[,2], 3), " (", round(table_tmp[,3], 3), ")", sep = "")
+      colnames(table_tmp)[4] <- graph_type
+      table_results <- table_tmp[order(table_tmp$est_method),c(1,4)]
     }else{
-      results_tmp <- summarized_results_test[summarized_results_test$ms_sc == ms_sc & summarized_results_test$graph_type == graph_type, 
+      table_tmp <- summarized_results_test[summarized_results_test$ms_sc == ms_sc & summarized_results_test$graph_type == graph_type, 
                                              c("est_method", "F1_mean", "F1_sd")] 
-      results_tmp <- results_tmp[order(results_tmp$est_method),]
-      table_results <- cbind(table_results, results_tmp[,2:3])
+      table_tmp[,4] <- paste(round(table_tmp[,2], 3), " (", round(table_tmp[,3], 3), ")", sep = "")
+      results_tmp <- table_tmp[order(table_tmp$est_method),c(1,4)]
+      table_results <- cbind(table_results, results_tmp[,2])
+      colnames(table_results)[ncol(table_results)] <- graph_type
     }
     ii <- ii + 1;
   }
 }
-table_results
+row.names(table_results) <- NULL
+kbl(table_results) %>%
+  kable_paper("striped", full_width = F) %>%
+  add_header_above(c(" " = 1, "chu measurement" = 2, "darmanis measurement" = 2))
 
 
 
