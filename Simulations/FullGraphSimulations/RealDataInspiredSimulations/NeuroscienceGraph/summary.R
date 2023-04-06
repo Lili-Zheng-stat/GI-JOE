@@ -1,6 +1,7 @@
 ##summarize real data inspired simulations results (real graph)
 library(ggplot2)
 library(dplyr)
+library(kableExtra)
 source("DataGeneration/ExperimentFunctions.R")
 
 F1_results <- read.table(file = "Results/realdata_inspired_simulations/NeuroscienceGraph/F1_results.csv", sep = " ", header =  TRUE)

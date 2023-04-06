@@ -1,6 +1,7 @@
 ##summarize simulation 2 results 
 library(ggplot2)
 library(dplyr)
+library(kableExtra)
 source("DataGeneration/ExperimentFunctions.R")
 
 F1_results <- read.table(file = "Results/sim2/F1_results.csv", sep = " ", header =  TRUE)

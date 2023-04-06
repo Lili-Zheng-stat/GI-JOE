@@ -1,7 +1,7 @@
 ##summarize real data inspired simulations results (real measurement patterns)
 library(ggplot2)
 library(dplyr)
-library(xtable)
+library(kableExtra)
 source("DataGeneration/ExperimentFunctions.R")
 
 F1_results <- read.table(file = "Results/realdata_inspired_simulations/scRNA-seqMeasurements/F1_results.csv", sep = " ", header =  TRUE)
