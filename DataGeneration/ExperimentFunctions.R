@@ -1,7 +1,7 @@
 ## functions for simulations
 #----------------------------------------------------#
 #perform edge-wise testing simulation for one replicate
-test_pairwise_experiment <- function(p, target_nodes, n1, n2, seed_data, tuning_c = NULL, ...){
+test_pairwise_experiment <- function(p, target_nodes, n1, n2, seed_data, tuning_c = NULL, precisionCI = FALSE, ...){
   ## given dimension p, graph type or a particular graph (Theta, Sigma, Adj_mat; or graph_type, seed_model), 
   # generate pairwise measurements data (setting seed_data) with sample sizes n1, n2, and other N[i,j];
   # n1 is scalar, n2 can be scalar or matrix of size (d_a+1)*(d_b^{(a)}+1).
@@ -43,11 +43,21 @@ test_pairwise_experiment <- function(p, target_nodes, n1, n2, seed_data, tuning_
   #update diagonal elements of N
   diag(N) <- 0; diag(N) <- apply(N, 1, sum);
   if(is.null(tuning_c)){
-    test_out <- edge_testing(data$X, dim(data$X)[1], data$Ind, data$Sigma_hat, 
-                                       p, N, target_nodes[1], target_nodes[2])
+    if(precisionCI){
+      test_out <- edge_testing(data$X, dim(data$X)[1], data$Ind, data$Sigma_hat, 
+                               p, N, target_nodes[1], target_nodes[2], precisionCI = precisionCI)
+    }else{
+      test_out <- edge_testing(data$X, dim(data$X)[1], data$Ind, data$Sigma_hat, 
+                               p, N, target_nodes[1], target_nodes[2]) 
+    }
   }else{
-    test_out <- edge_testing(data$X, dim(data$X)[1], data$Ind, data$Sigma_hat, 
-                                       p, N, target_nodes[1], target_nodes[2], tuning_c)
+    if(precisionCI){
+      test_out <- edge_testing(data$X, dim(data$X)[1], data$Ind, data$Sigma_hat, 
+                               p, N, target_nodes[1], target_nodes[2], tuning_c, precisionCI = precisionCI)
+    }else{
+      test_out <- edge_testing(data$X, dim(data$X)[1], data$Ind, data$Sigma_hat, 
+                               p, N, target_nodes[1], target_nodes[2], tuning_c)
+    }
   }
   beta <- Theta[, target_nodes[1]] / Theta[target_nodes[1], target_nodes[1]];
   

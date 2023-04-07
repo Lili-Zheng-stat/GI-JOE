@@ -2,6 +2,7 @@
 ## graph type, alpha, and p, n1 are determined by command line arguments, 
 ## loop over seed
 csv_path <- "Results/sim1_1/simulation1_1_results.csv"
+precision_csv_path <- "Results/precision_CI_results.csv"
 tuning_path <- "Results/sim1_1/simulation1_1_tuning.csv"
 source("DataGeneration/DataGenerationFunctions.R")
 source("DataGeneration/ExperimentFunctions.R")
@@ -49,12 +50,19 @@ if(nrow(tuning_c) > 1){
 for(kk in 1:length(seed_vec)){
   seed <- seed_vec[kk]
   print(sprintf("running experiment with %s graph, p = %d, n1 = %d, alpha = %.2f, seed =%d", graph_type, p, n1, alpha, seed))
-  test_tmp <- test_pairwise_experiment(p, target_nodes, n1, n2, seed, tuning_c = tuning_c, Theta = Theta, Sigma = Sigma, Adj_mat = Adj_mat)
+  test_tmp <- test_pairwise_experiment(p, target_nodes, n1, n2, seed, tuning_c = tuning_c, Theta = Theta, Sigma = Sigma, Adj_mat = Adj_mat, precisionCI = TRUE)
   result <- data.frame(graph = graph_type, p = p, n1 = n1, alpha = alpha, seed = seed, test_stat = test_tmp$test, var_est = test_tmp$var_est,
                        test_knownvar = test_tmp$test_knownvar)
   if(file.exists(csv_path)){
     write.table(result, file = csv_path, sep = " ", row.names=FALSE, append = TRUE, col.names = FALSE)
   }else{
     write.table(result, file = csv_path, sep = " ", row.names=FALSE)
+  }
+  coverage = (test_tmp$CI_Theta[1] <= Theta[target_nodes[1], target_nodes[2]] & test_tmp$CI_Theta[2] >= Theta[target_nodes[1], target_nodes[2]])
+  result_precision <- data.frame(graph = graph_type, p = p, n1 = n1, alpha = alpha, n2 = n2, signal_ind = 1, seed = seed, coverage = coverage)
+  if(file.exists(precision_csv_path)){
+    write.table(result_precision, file = precision_csv_path, sep = " ", row.names=FALSE, append = TRUE, col.names = FALSE)
+  }else{
+    write.table(result_precision, file = precision_csv_path, sep = " ", row.names=FALSE)
   }
 }

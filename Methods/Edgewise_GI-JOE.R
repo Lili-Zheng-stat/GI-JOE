@@ -1,15 +1,16 @@
 ##GI-JOE (edge-wise) functions 
 #----------------------------------------------------#
-edge_testing <- function(X, n_total, Ind, Entryest_Sigma, p, N, node_a, node_b, ...){
+edge_testing <- function(X, n_total, Ind, Entryest_Sigma, p, N, node_a, node_b, precisionCI = FALSE, ...){
   ## Perform GI-JOE (edge-wise) for pairwise measured data
   ## Pairwise measured data typically has huge number of rows, and hence general method for computing the quadruple sample sizes and even indexing can be inefficient.
   ## Therefore, we wrote a separate function for GI-JOE (edge-wise) with pairwise measured data for computational reasons.
+  ## If precisionCI == TRUE, also provide confidence interval for Theta[node_a, node_b].
   
   ## X: n_total by p matrix; Each row of X represents a sample, with two variables being observed, while the rest are all zero
   ## Ind: list of (p-1) list, Ind[[i]][[j]] tells the row indices of X where pair i,j are observed, for i<j
   ## Entryest_Sigma: entry-wise unbiased estimate of the covariance matrix
   ## N: p by p pairwise sample size matrix
-  ## node_a, node_b: tested node pair
+  ## node_a, node_b: tested node pair, node_a != node_b.
   ## Additional input: tuning parameter constant c; if not provided, chosen by stability selection.
   ## return: the test statistic for Theta[node_a,node_b]/Theta[node_a,node_a].
   input <- list(...);
@@ -74,7 +75,22 @@ edge_testing <- function(X, n_total, Ind, Entryest_Sigma, p, N, node_a, node_b, 
   
   #test statistic
   test <- beta_tilde/sqrt(var_est)
-  return(list(beta_hat = beta_hat, theta_hat_debiasing = theta_hat_debiasing, theta_hat_varest = theta_hat_varest, beta_tilde = beta_tilde, tuning_c1 = tuning_c1, tuning_c2 = tuning_c2, var_est = var_est, test = test, PSD_Sigma = PSD_Sigma))
+  
+  #confidence interval for Theta[node_a,node_b]
+  if(precisionCI){
+    Theta_aa_est <- 1 / as.numeric(t(beta_hat2) %*% Entryest_Sigma %*% beta_hat2)
+    Theta_a_bb_est <- 1 / as.numeric(t(theta_hat) %*% Entryest_Sigma %*% theta_hat);
+    Theta_tilde_ab <- - Theta_aa_est * beta_tilde 
+    Theta_hat_b <- theta_hat * Theta_a_bb_est + Theta_aa_est * beta_hat2[node_b] * beta_hat2;
+    Theta_hat_a <- beta_hat2 * Theta_aa_est
+    var_est_precision <- find_var(PSD_Sigma, N, Theta_hat_a, Theta_hat_b)
+    half_ciwidth <- sqrt(var_est_precision) * qnorm(0.975)
+    return(list(beta_hat = beta_hat, theta_hat_debiasing = theta_hat_debiasing, theta_hat_varest = theta_hat_varest, beta_tilde = beta_tilde, tuning_c1 = tuning_c1, tuning_c2 = tuning_c2, var_est = var_est, test = test, PSD_Sigma = PSD_Sigma,
+                CI_Theta <- c(Theta_tilde_ab - half_ciwidth, Theta_tilde_ab + half_ciwidth)))
+  }else{
+    return(list(beta_hat = beta_hat, theta_hat_debiasing = theta_hat_debiasing, theta_hat_varest = theta_hat_varest, beta_tilde = beta_tilde, tuning_c1 = tuning_c1, tuning_c2 = tuning_c2, var_est = var_est, test = test, PSD_Sigma = PSD_Sigma))
+  }
+  
 }
 
 est_nb_tuning <- function(X, n_total, p, Ind, n_subsample, stb_thrs, Sigma, a, lambda_scale, eta, tol){

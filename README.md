@@ -4,17 +4,18 @@ Measured Data". To reproduce the results, the working directory of all code shou
 
 ## Main Functions
 The folder *Methods* contains the R code for running the GI-JOE method and running some baseline methods under the erose measurement settings.
-- *Edgewise_GI-JOE.R* contains the functions for performing edge-wise testing, including code for stability selection
+- *Edgewise_GI-JOE.R* contains the functions for performing edge-wise testing, including code for stability selection. By setting the option precisionCI = TRUE,this function would also output a confidence interval for the corresponding entry of the precision matrix.
 - *fullGraph_GI-JOE.R* contains the functions for performing whole graph testing, including the Bonferroni correction, Holm's correction, and the GI-JOE (FDR) method. Data-driven stability tuning code for the whole graph is also included.
 - *baseline_graph_selection.R* contains the functions for running some baseline methods in the erose measurement setting, including the neighborhood lasso, graphical lasso, CLIME, debiased graphical lasso based on the projected positive semidefinite covariance estimate. The stability tuning code applicable for the erose measurements is also included.
 
 ## Simulations
 The folder *Simulations* contains the R code for running and summarizing the simulations included in the paper. 
-- *EdgewiseSimulation/sim1_1_main.R* runs the simulation for validating the Type I error of edge-wise testing. The graph structure, dimension, sample sizes can be input from the command line. 
+- *EdgewiseSimulation/sim1_1_main.R* runs the simulation for validating the Type I error of edge-wise testing. The graph structure, dimension, sample sizes can be input from the command line. The coverage of the confidence interval for the corresponding precision entry is also recorded. 
 - *EdgewiseSimulation/sim1_1_main.R* runs the simulation for validating the power of edge-wise testing.
 - Both *sim1_1_main.R* and *sim1_1_main.R* read previously saved tuning result (*Results/sim1_1/simulation1_1_tuning.csv*, *Results/sim1_2/simulation1_2_tuning.csv*), which can be reproduced by running *sim1_1_tuning.R* and *sim1_2_tuning.R*
 - After running *sim1_1_main.R* and *sim1_2_main.R* for the settings described in the manuscript, one would obtain *Results/sim1_1/simulation1_1_results.csv*, and *Results/sim1_2/simulation1_2_results.csv*, which can be summarized by *sim1_1_summary.R* and *sim1_2_summary.R*, to reproduce the figures in the manuscript.
 
+- To reproduce Figure 2 (coverage rate of the confidence interval for a precision entry) in the Supplementary material, one can run *Precision_CI_summary.R*, which summarizes *Results/precision_CI_results.csv*.
 - *FullGraphSimulations/sim2_main.R* runs the comparative studies with synthetic data and synthetic set-ups. The results are saved in *Results/sim2/F1_results.csv* and can be summarized by *sim2_summary.R*.
 - *FullGraphSimulations/RealDataInspiredSimulations* include the codes for real data-inspired simulations, either with real neuroscience graphs or with real scRNA-seq measurement patterns. Both can be reproduced by running *main.R* and then *summary.R* in the corresponding subfolder.
 
