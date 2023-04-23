@@ -56,12 +56,12 @@ test_pairwise_experiment <- function(p, target_nodes, n1, n2, seed_data, tuning_
                                p, N, target_nodes[1], target_nodes[2], tuning_c, precisionCI = precisionCI)
     }else{
       test_out <- edge_testing(data$X, dim(data$X)[1], data$Ind, data$Sigma_hat, 
-                               p, N, target_nodes[1], target_nodes[2], tuning_c)
+                               p, N, target_nodes[1], target_nodes[2], tuning_c = tuning_c)
     }
   }
   beta <- Theta[, target_nodes[1]] / Theta[target_nodes[1], target_nodes[1]];
   
-  true_var <- find_var(Sigma, N, beta, key_ind_list$Theta_a[target_nodes[2],])
+  true_var <- find_var_pairwise(Sigma, N, beta, key_ind_list$Theta_a[target_nodes[2],])
   test_out$true_var <- true_var
   test_out$test_knownvar <- test_out$test * sqrt(test_out$var_est/true_var)
   test_out$Entryest_Sigma <- data$Sigma_hat

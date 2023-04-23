@@ -53,10 +53,7 @@ GIJOE_testing_step1 <- function(X, Obs, n_total, p, ...){
     Sigma_out <- calc_Sigma_PSD(X[selected_ind, ], Obs[selected_ind, ], p)
     Sigma_hat[i, , ] <- Sigma_out$PSD_Sigma; N[i, , ] <- Sigma_out$N
   }
-  
-  #find N4 (exhausting memory for p = 200!)
-  #N4 <- m4_sum(Obs)
-  
+
   #loop over all pairs (a, b): neighborhood lasso for a and debiasing vector for (a,b)
   eta <- 1;tol <- 0.00001; lambda_scale <- sqrt(log(p)/apply(N[1, , ], 1, min))
   beta_hat <- matrix(rep(0, p^2), p, p); theta_hat_debiasing <- array(rep(0, p^3), c(p, p, p)); 
@@ -64,7 +61,7 @@ GIJOE_testing_step1 <- function(X, Obs, n_total, p, ...){
   var_est <- matrix(rep(0, p^2), p, p); tuning_c_vec <- rep(0, p); tuning_c_mat <- matrix(rep(0, p^2), p, p); test <- matrix(rep(0, p^2), p, p)
   for(node_a in 1 : (p - 1)){
     if(length(input) > 0){
-      fit_out1 <- fit_nb(Sigma_hat[1, , ], p, node_a, lambda_scale[-node_a] * input[[1]], eta, tol)
+      fit_out1 <- fit_nb(Sigma_hat[1, , ], node_a, lambda_scale[-node_a] * input[[1]], eta, tol)
     }else{
       fit_out1 <- est_nb_tuning(Sigma_hat, N, p, stb_thrs = 0.05, node_a, lambda_scale[-node_a], eta, tol)
       tuning_c_vec[node_a] <- fit_out1$tuning_c
@@ -75,7 +72,7 @@ GIJOE_testing_step1 <- function(X, Obs, n_total, p, ...){
       node_b_ind <- which(ind == node_b)
       lambda_scale_tmp <- sqrt(log(p - 1)/apply(N[1, -node_a, -node_a], 1, min))
       if(length(input) > 0){
-        fit_out2 <- fit_nb(Sigma_hat[1, -node_a, -node_a], p, node_b_ind, lambda_scale_tmp[-node_b_ind] * input[[1]], eta, tol)
+        fit_out2 <- fit_nb(Sigma_hat[1, -node_a, -node_a], node_b_ind, lambda_scale_tmp[-node_b_ind] * input[[1]], eta, tol)
       }else{
         fit_out2 <- est_nb_tuning(Sigma_hat[, -node_a, -node_a], N[, -node_a, -node_a], p - 1, stb_thrs = 0.05, node_b_ind, lambda_scale_tmp[-node_b_ind], eta, tol)
         tuning_c_mat[node_a, node_b] <- fit_out2$tuning_c
@@ -129,7 +126,9 @@ GIJOE_testing_step1_onetuning <- function(X, Obs, n_total, p, symmetry){
   
   #loop over all pairs (a, b): debiasing vector for (a,b); 
   #if symmetry = true, (a, b) and (b, a) are both considered; otherwise, consider (a, b) for a < b
-  theta_hat <- array(rep(0, p^3), c(p, p, p)); beta_tilde <- matrix(rep(0, p^2), p, p)
+  theta_hat_debiasing <- array(rep(0, p^3), c(p, p, p)); 
+  theta_hat_varest <- array(rep(0, p^3), c(p, p, p)); 
+  beta_tilde <- matrix(rep(0, p^2), p, p)
   var_est <- matrix(rep(0, p^2), p, p); test <- matrix(rep(0, p^2), p, p)
   start_t <- Sys.time()
   for(node_a in 1 : (p - 1)){
@@ -138,19 +137,21 @@ GIJOE_testing_step1_onetuning <- function(X, Obs, n_total, p, symmetry){
       if(node_b > node_a || symmetry){
         node_b_ind <- which(ind == node_b)
         lambda_scale_tmp <- sqrt(log(p - 1)/apply(N[1, -node_a, -node_a], 1, min))
-        fit_out2 <- fit_nb(Sigma_hat[1, -node_a, -node_a], p - 1, node_b_ind, lambda_scale_tmp[-node_b_ind] * tuning_c, eta, tol)
-        theta_hat[node_a, node_b, -c(node_a, node_b)] <- fit_out2$beta_hat
-        tau <- as.numeric(1 / (Sigma_hat[1, node_b, node_b] - Sigma_hat[1, node_b, ] %*% theta_hat[node_a, node_b, ]))
-        theta_hat[node_a, node_b, ] <- -theta_hat[node_a, node_b,] * tau
-        theta_hat[node_a, node_b, node_b] <- tau
+        fit_out2 <- fit_nb(Sigma_hat[1, -node_a, -node_a], node_b_ind, lambda_scale_tmp[-node_b_ind] * tuning_c, eta, tol)
+        theta_hat_varest[node_a, node_b, -c(node_a, node_b)] <- - fit_out2$beta_hat
+        theta_hat_varest[node_a, node_b, node_b] <- 1
+        tau_varest <- as.numeric(1 / (t(theta_hat_varest[node_a, node_b, ]) %*% Sigma_hat[1, , ] %*% theta_hat_varest[node_a, node_b, ]))
+        tau_debiasing <- as.numeric(1 / (Sigma_hat[1, node_b, ] %*% theta_hat_varest[node_a, node_b, ]))
+        theta_hat_debiasing[node_a, node_b, ] <- theta_hat_varest[node_a, node_b,] * tau_debiasing
+        theta_hat_varest[node_a, node_b, ] <- theta_hat_varest[node_a, node_b,] * tau_varest
         #debiased neighborhood lasso (node_a, node_b)
-        beta_tilde[node_a, node_b] = as.numeric(beta_hat[node_a, node_b] - t(theta_hat[node_a, node_b, ]) %*% (Entryest_Sigma %*% beta_hat[node_a, ] - Entryest_Sigma[, node_a]))
+        beta_tilde[node_a, node_b] = as.numeric(beta_hat[node_a, node_b] - t(theta_hat_debiasing[node_a, node_b, ]) %*% (Entryest_Sigma %*% beta_hat[node_a, ] - Entryest_Sigma[, node_a]))
       }
     }
   }
   print(Sys.time() - start_t)
   print("Graph estimation using neighborhood lasso is done!")
-  return(list(beta_hat = beta_hat, theta_hat = theta_hat, beta_tilde = beta_tilde, N = N[1, , ], tuning_c = tuning_c, Entryest_Sigma = Entryest_Sigma))
+  return(list(beta_hat = beta_hat, theta_hat_debiasing = theta_hat_debiasing, theta_hat_varest = theta_hat_varest, beta_tilde = beta_tilde, N = N[1, , ], tuning_c = tuning_c, Entryest_Sigma = Entryest_Sigma, PSD_Sigma = Sigma_hat[1, , ]))
 }
 
 find_variances_GIJOE <- function(nblasso_step1_results, PSD_Sigma, theta_hat, Obs, row_ind, col_ind){
@@ -350,5 +351,116 @@ p_val_to_Holm_FDR <- function(p_val_mat, signif_pval = 0.05, p_kept, p){
   signif_graph_FDR <- matrix(rep(0, p^2), p, p)
   signif_graph_FDR[signif_ind_FDR] <- 1; signif_graph_FDR <- signif_graph_FDR + t(signif_graph_FDR)
   return(list(signif_graph_holm = signif_graph_holm, signif_graph_FDR = signif_graph_FDR))
+}
+
+#----------------------------------------------------#
+est_graph_tuning <- function(Sigma_hat, N, p, stb_thrs, lambda_scale, eta, tol){
+  ## perform neighborhood lasso for all nodes with tuning parameter selected based on stability
+  ## Sigma_hat includes the PSD covariance estimate using the full data and 20 subsampled data;
+  ## lambda_scale is the p-dimensional scale of penality parameters for the whole data set
+  ## N is 21*p*p, N[1,,] is the pairwise sample size of full data; N[i,,] for i=2,...,21 is the pairwise sample size of subsampled data
+  
+  #find range of tuning_c
+  #tuning_c_max is the approximately the smallest tuning parameter that leads to an empty graph
+  tuning_c_max <- 1
+  node_a <- 1
+  out <- fit_nb(Sigma_hat[1, , ], node_a, lambda_scale[-node_a] * tuning_c_max, eta, tol)
+  while(sum(out$beta_hat != 0) > 0 || node_a < p){
+    if(sum(out$beta_hat != 0) > 0){
+      tuning_c_max <- tuning_c_max * 2
+    }else{
+      node_a <- node_a + 1;
+    }
+    out <- fit_nb(Sigma_hat[1, , ], node_a, lambda_scale[-node_a] * tuning_c_max, eta, tol)
+  }
+  if(tuning_c_max == 1){
+    while(sum(out$beta_hat != 0) == 0){
+      if(node_a < p){
+        node_a <- node_a + 1
+      }else{
+        tuning_c_max <- tuning_c_max / 2
+        node_a <- 1
+      }
+      out <- fit_nb(Sigma_hat[1, , ], node_a, lambda_scale[-node_a] * tuning_c_max, eta, tol)
+    }
+    tuning_c_max <- tuning_c_max * 2
+  }
+  tuning_c_vec <- exp(log(tuning_c_max)-log(10) / 19 * (0 : 19))
+  
+  #Given the vector of tuning parameters, fit graphs for subsampled data and return stabilities
+  tuning_out <- graph_stb_tuning(Sigma_hat[2 : 21, , ], N[2 : 21, , ], p, tuning_c_vec, eta, tol)
+  
+  if(tuning_out$stb_vec[1] > stb_thrs){
+    choice_ind <- 1
+  }else if(max(tuning_out$stb_vec) <= stb_thrs){
+    choice_ind <- length(tuning_c_vec)
+  }else{
+    choice_ind <- min(which(tuning_out$stb_vec > stb_thrs)) - 1
+  }
+  
+  nblasso_combined <- matrix(rep(0, p^2), p, p); out_final <- list()
+  for(node_a in 1 : p){
+    out_final[[node_a]] <- fit_nb(Sigma_hat[1, , ], node_a, lambda_scale[-node_a] * tuning_c_vec[choice_ind], eta, tol)
+    nblasso_combined[node_a, -node_a] <- out_final[[node_a]]$beta_hat
+  }
+  return(list(out_final = out_final, nblasso_combined = nblasso_combined, stb_vec = tuning_out$stb_vec, 
+              theta_stb = tuning_out$theta_stb, tuning_c_vec = tuning_c_vec, tuning_c = tuning_c_vec[choice_ind]))
+}
+#----------------------------------------------------#
+graph_stb_tuning <- function(Sigma_hat, N, p, tuning_c_vec, eta, tol){
+  #use stability tuning; 
+  n_subsample <- dim(Sigma_hat)[1]
+  graph_est_arr <- array(rep(0, length(tuning_c_vec) * n_subsample * p * p), dim = c(length(tuning_c_vec), n_subsample, p, p))
+  for(kk in 1 : n_subsample){
+    lambda_scale_tmp <- sqrt(log(p)/apply(N[kk, , ],1,min))
+    for(j in 1 : length(tuning_c_vec)){
+      for(node_a in 1 : p){
+        out <- fit_nb(Sigma_hat[kk, , ], node_a, lambda_scale_tmp[-node_a] * tuning_c_vec[j], eta, tol)
+        graph_est_arr[j, kk, node_a, -node_a] <- out$beta_hat != 0
+      }
+    }
+  }
+  theta_stb <- apply(graph_est_arr, c(1, 3, 4), mean)
+  stb_vec <- apply(2 * theta_stb * (1 - theta_stb), 1, mean)
+  return(list(theta_stb = theta_stb, stb_vec = stb_vec))
+}
+#----------------------------------------------------#
+calc_Sigma_PSD <- function(X, Obs, p, Entryest = FALSE){
+  #calculate covariate estimate (entrywise and positive-semi definite projection) and pairwise sample size matrix,
+  #using data X with observational pattern Obs
+  Sigma_sum <- t(X) %*% X
+  N <- t(Obs) %*% Obs
+  Entryest_Sigma <- Sigma_sum / N
+  Entryest_Sigma[N == 0] <- 0
+  proj_out <- proj_cov(Entryest_Sigma, N, 0.01, 1, matrix(rep(0, p^2), p, p), matrix(rep(1, p^2), p, p), 0.001, 500)
+  PSD_Sigma  <- proj_out$projected_S
+  if(Entryest){
+    return(list(PSD_Sigma = PSD_Sigma, N = N, Entryest_Sigma = Entryest_Sigma))
+  }else{
+    return(list(PSD_Sigma = PSD_Sigma, N = N))
+  }
+}
+#----------------------------------------------------#
+find_var <- function(Sigma, N, Obs, beta, theta){
+  p <- dim(Sigma)[[1]]
+  var <- 0
+  supp_theta <- which(theta != 0); supp_beta <- which(beta != 0)
+  nonzeroObs <- which(N > 0)
+  for(j1 in supp_theta){
+    for(j2 in supp_beta){
+      if(N[j1, j2] > 0){
+        for(j3 in supp_theta){
+          for(j4 in supp_beta){
+            if(N[j3, j4] > 0){
+              n_quad <- sum(Obs[, j1] * Obs[, j2] * Obs[, j3] * Obs[, j4])
+              var <- var + (Sigma[j1, j3] * Sigma[j2, j4] + Sigma[j1, j4] * Sigma[j2, j3]) * 
+                n_quad / N[j1, j2] / N[j3, j4] * theta[j1] * theta[j3] * beta[j2] * beta[j4]
+            }
+          }
+        }
+      }
+    }
+  }
+  return(var)
 }
 

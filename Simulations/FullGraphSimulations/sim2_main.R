@@ -62,7 +62,7 @@ if(nblasso_step1_results$success){
 p_kept <- length(nblasso_step1_results$kept_nodes)
 row_ind <- NULL; for(i in 1 : (p_kept - 1)){row_ind <- c(row_ind, rep(i, p_kept - i))}
 col_ind <- NULL; for(i in 2 : p_kept){col_ind <- c(col_ind, i : p_kept)}
-nblasso_var_est <- find_variances_GIJOE(nblasso_step1_results, nblasso_step1_results$PSD_Sigma, nblasso_step1_results$theta_hat_varest, Obs, row_ind, col_ind)
+nblasso_var_est <- find_variances_GIJOE(nblasso_step1_results, nblasso_step1_results$test_out$PSD_Sigma, nblasso_step1_results$test_out$theta_hat_varest, Obs, row_ind, col_ind)
 var_est_results <- data.frame(rows = nblasso_step1_results$kept_nodes[row_ind], cols =  nblasso_step1_results$kept_nodes[col_ind], var_est = nblasso_var_est)
 
 ## step3 of GI-JOE full graph testing: compute edge-wise test statistic and apply Holm's correction or FDR control procedure on p-values
@@ -83,7 +83,7 @@ for(baseline in baseline_methods){
 }
 
 ## run debiased graphical lasso with minimum pairwise sample size
-graph_test_glasso <- test_glasso(graph_est[["glasso"]]$Sigma_hat, matrix(graph_est[["glasso"]]$Theta_hat, length(kept_nodes), length(kept_nodes)), 
+graph_test_glasso <- test_glasso(graph_est[["Glasso"]]$Sigma_hat, matrix(graph_est[["Glasso"]]$Theta_hat, length(kept_nodes), length(kept_nodes)), 
                                  min(N[kept_nodes, kept_nodes]), p, kept_nodes, 0.05)
 debiased_glasso_graph <- p_val_to_Holm_FDR(graph_test_glasso$p_val, p_kept = length(kept_nodes), p = p)
 record_graph(debiased_glasso_graph$signif_graph_holm, method = "DBGlasso_Holm", graph_type, 

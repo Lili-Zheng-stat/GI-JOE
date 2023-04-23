@@ -71,7 +71,7 @@ edge_testing <- function(X, n_total, Ind, Entryest_Sigma, p, N, node_a, node_b, 
   beta_hat2 <- -beta_hat;
   beta_hat2[node_a] <- 1;
   #estimated Theta[,node_a]/Theta[node_a,node_a]
-  var_est <- find_var(PSD_Sigma, N, beta_hat2, theta_hat_varest)
+  var_est <- find_var_pairwise(PSD_Sigma, N, beta_hat2, theta_hat_varest)
   
   #test statistic
   test <- beta_tilde/sqrt(var_est)
@@ -83,10 +83,10 @@ edge_testing <- function(X, n_total, Ind, Entryest_Sigma, p, N, node_a, node_b, 
     Theta_tilde_ab <- - Theta_aa_est * beta_tilde 
     Theta_hat_b <- theta_hat * Theta_a_bb_est + Theta_aa_est * beta_hat2[node_b] * beta_hat2;
     Theta_hat_a <- beta_hat2 * Theta_aa_est
-    var_est_precision <- find_var(PSD_Sigma, N, Theta_hat_a, Theta_hat_b)
+    var_est_precision <- find_var_pairwise(PSD_Sigma, N, Theta_hat_a, Theta_hat_b)
     half_ciwidth <- sqrt(var_est_precision) * qnorm(0.975)
     return(list(beta_hat = beta_hat, theta_hat_debiasing = theta_hat_debiasing, theta_hat_varest = theta_hat_varest, beta_tilde = beta_tilde, tuning_c1 = tuning_c1, tuning_c2 = tuning_c2, var_est = var_est, test = test, PSD_Sigma = PSD_Sigma,
-                CI_Theta <- c(Theta_tilde_ab - half_ciwidth, Theta_tilde_ab + half_ciwidth)))
+                CI_Theta = c(Theta_tilde_ab - half_ciwidth, Theta_tilde_ab + half_ciwidth)))
   }else{
     return(list(beta_hat = beta_hat, theta_hat_debiasing = theta_hat_debiasing, theta_hat_varest = theta_hat_varest, beta_tilde = beta_tilde, tuning_c1 = tuning_c1, tuning_c2 = tuning_c2, var_est = var_est, test = test, PSD_Sigma = PSD_Sigma))
   }
@@ -187,7 +187,9 @@ calc_Sigma_subsample <- function(X, p, Ind, seed){
 
 
 
-find_var <- function(Sigma, N, beta, theta){
+find_var_pairwise <- function(Sigma, N, beta, theta){
+  #compute the variance of an edge given the covariance estimate, node-wise regression coefficients beta and theta
+  #specifically written for pairwise measurements
   p <- dim(Sigma)[[1]]
   var <- 0
   supp_theta <- which(theta != 0);
