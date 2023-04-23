@@ -244,12 +244,13 @@ GIJOE_thrs_step3 <- function(step1_results, var_est_results, p, signif_pval, tes
   graph_est_OR <- pmax(graph_est, t(graph_est))
   graph_est_AND <- pmin(graph_est, t(graph_est))
   
-  return(list(signif_graph_holm = signif_graph_holm, signif_graph_FDR = signif_graph_FDR, graph_est_OR = graph_est_OR, graph_est_AND = graph_est_AND))
+  return(list(signif_graph_holm = signif_graph_holm, signif_graph_FDR = signif_graph_FDR, graph_est_OR = graph_est_OR, graph_est_AND = graph_est_AND, p_val = p_val,
+              p_val_Bonferroni = p_val_Bonferroni))
 }
 
 
 
-GIJOE_step3 <- function(step1_results, var_est_results, p, signif_pval, screenSigma){
+GIJOE_step3 <- function(step1_results, var_est_results, p, signif_pval){
   #given step 1 results using nblasso and variance estimate, find significant graphs
   var_est <- matrix(rep(0, p^2), p, p); 
   p_kept <- length(step1_results$kept_nodes);
@@ -313,7 +314,8 @@ GIJOE_step3 <- function(step1_results, var_est_results, p, signif_pval, screenSi
   graph_est_AND <- pmin(graph_est, t(graph_est))
   
   return(list(signif_graph_Bonferroni = signif_graph_Bonferroni, signif_graph_holm = signif_graph_holm, 
-              signif_graph_FDR = signif_graph_FDR, graph_est_AND = graph_est_AND, graph_est_OR = graph_est_OR))
+              signif_graph_FDR = signif_graph_FDR, graph_est_AND = graph_est_AND, graph_est_OR = graph_est_OR, p_val = p_val,
+              p_val_Bonferroni = p_val_Bonferroni))
 }
 
 
