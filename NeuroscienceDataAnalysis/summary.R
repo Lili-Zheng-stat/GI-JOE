@@ -4,8 +4,8 @@ node_order <- order(neuron_location[,1], decreasing = TRUE)
 
 #F1 results for the whole graph
 node_set <- 1:p
-a <- find_F1(nblasso_inference_results$signif_graph_FDR[node_set,node_set], graph_test_full$signif_graph_FDR[node_set,node_set])
-a <- rbind(a, find_F1(nblasso_inference_results$signif_graph_holm[node_set,node_set], graph_test_full$signif_graph_FDR[node_set,node_set]))
+a <- find_F1(GIJOE_results$signif_graph_FDR[node_set,node_set], graph_test_full$signif_graph_FDR[node_set,node_set])
+a <- rbind(a, find_F1(GIJOE_results$signif_graph_holm[node_set,node_set], graph_test_full$signif_graph_FDR[node_set,node_set]))
 a <- rbind(a, find_F1(debiased_glasso_graph$signif_graph_FDR[node_set,node_set], graph_test_full$signif_graph_FDR[node_set,node_set]))
 a <- rbind(a, find_F1(debiased_glasso_graph$signif_graph_holm[node_set,node_set], graph_test_full$signif_graph_FDR[node_set,node_set]))
 results <- data.frame(Method =c("GI-JOE(FDR)","GI-JOE(Holm)", "DB-Glasso(FDR)","DB-Glasso(Holm)"), FP = a[,'FP'], FN = a[, 'FN'], TP = a[, 'TP'], TN = a[, 'TN'], F1 = a[, 'F1'])
@@ -18,8 +18,8 @@ results
 node_label <- c(rep("low", floor(p / 3)), rep("median", floor(p / 3)), rep("high", p - floor(p / 3) * 2))
 for(node_set_label in c("high", "median", "low")){
   node_set <- node_order[which(node_label == node_set_label)]
-  a <- find_F1(nblasso_inference_results$signif_graph_FDR[node_set,node_set], graph_test_full$signif_graph_FDR[node_set,node_set])
-  a <- rbind(a, find_F1(nblasso_inference_results$signif_graph_holm[node_set,node_set], graph_test_full$signif_graph_FDR[node_set,node_set]))
+  a <- find_F1(GIJOE_results$signif_graph_FDR[node_set,node_set], graph_test_full$signif_graph_FDR[node_set,node_set])
+  a <- rbind(a, find_F1(GIJOE_results$signif_graph_holm[node_set,node_set], graph_test_full$signif_graph_FDR[node_set,node_set]))
   a <- rbind(a, find_F1(debiased_glasso_graph$signif_graph_FDR[node_set,node_set], graph_test_full$signif_graph_FDR[node_set,node_set]))
   a <- rbind(a, find_F1(debiased_glasso_graph$signif_graph_holm[node_set,node_set], graph_test_full$signif_graph_FDR[node_set,node_set]))
   results <- data.frame(Method =c("GI-JOE(FDR)","GI-JOE(Holm)", "DB-Glasso(FDR)","DB-Glasso(Holm)"), FP = a[,'FP'], FN = a[, 'FN'], TP = a[, 'TP'], TN = a[, 'TN'], F1 = a[, 'F1'])
